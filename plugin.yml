@@ -1,0 +1,7 @@
+name: MorseChat
+version: 0.0.1
+main: pjz9n\morsechat\Main
+api: 3.0.0
+authors:
+  - pjz9n
+  - tatchan0825
