@@ -45,7 +45,7 @@ class MorseSendTask extends Task
     public function __construct(array $moles)
     {
         foreach ($moles as $morse) {
-            if ($morse === null) {
+            if ($morse == null) {
                 continue;
             }
             $this->realMoles = array_merge($this->realMoles, array_merge([-1], $morse));
@@ -59,8 +59,15 @@ class MorseSendTask extends Task
             $this->getHandler()->cancel();
             return;
         }
-        $morse = $this->realMoles[$this->cursor];
-        $morse = $morse === 0 ? Main::TYPE_SHORT : ($morse === 1 ? Main::TYPE_LONG : -1);
+        $morse = -1;
+        switch ($this->realMoles[$this->cursor]) {
+            case 0:
+                $morse = Main::TYPE_SHORT;
+                break;
+            case 1:
+                $morse = Main::TYPE_LONG;
+                break;
+        }
         if ($morse !== -1) {
             Main::sendMorse($morse);
         }

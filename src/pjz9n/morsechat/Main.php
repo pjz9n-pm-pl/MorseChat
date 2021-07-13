@@ -181,7 +181,7 @@ class Main extends PluginBase implements Listener
     public function onchat(PlayerChatEvent $event): void
     {
         $player = $event->getPlayer();
-        $this->toKatakana($event->getMessage(), function (string $converted) use ($player): void {
+        $this->toKatakana($event->getMessage(), function (string $converted): void {
             $this->getScheduler()->scheduleRepeatingTask(new MorseSendTask($this->textToMoles($converted)), 5);
         }, function () use ($player) {
             $player->sendMessage("えらー...");
