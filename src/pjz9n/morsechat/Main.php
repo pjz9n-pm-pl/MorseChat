@@ -24,55 +24,27 @@ declare(strict_types=1);
 namespace pjz9n\morsechat;
 
 use Closure;
+use InvalidArgumentException;
+use pjz9n\morsechat\command\MorseCommand;
 use pjz9n\morsechat\task\GooKatakanaTask;
+use pjz9n\morsechat\task\MorseSendTask;
+use pjz9n\resourcepacktools\ResourcePack;
 use pocketmine\event\Listener;
 use pocketmine\event\player\PlayerChatEvent;
+use pocketmine\network\mcpe\protocol\PlaySoundPacket;
+use pocketmine\Player;
 use pocketmine\plugin\PluginBase;
+use pocketmine\Server;
 
 class Main extends PluginBase implements Listener
 {
-    private static $caFilePath;
+    public const TYPE_SHORT = 0;
+    public const TYPE_LONG = 1;
 
-    public static function getCaFilePath(): string
-    {
-        return self::$caFilePath;
-    }
-
-    public function onEnable()
-    {
-        self::$caFilePath = $this->getDataFolder() . "cacert.pem";
-        $this->saveDefaultConfig();
-        $this->saveResource("cacert.pem");
-        $this->getServer()->getPluginManager()->registerEvents($this, $this);
-    }
-
-    public function onchat(PlayerChatEvent $event)
-    {
-        $player = $event->getPlayer();
-        $this->toKatakana($event->getMessage(), function (string $converted) use ($player): void {
-            var_dump($converted);
-            $player->sendMessage(implode("  ", $this->textToMorse($converted)));
-        }, function () use ($player) {
-            $player->sendMessage("えらー...");
-        });
-    }
-
-    public function toKatakana(string $text, Closure $onComplete, Closure $onError): void
-    {
-        $this->getServer()->getAsyncPool()->submitTask(new GooKatakanaTask(
-            $this->getConfig()->get("goo-app-id"),
-            $text,
-            function ($responseCode, $result) use ($onComplete, $onError): void {
-                if ($responseCode === 200) {
-                    $onComplete(json_decode($result, true)["converted"]);
-                } else {
-                    $onError();
-                }
-            }
-        ));
-    }
-// 0 => .
-// 1 => -
+    /**
+     * 0 => .
+     * 1 => -
+     */
     public const CHAR_MORSE_MAP = [
         "0" => "11111",
         "1" => "01111",
@@ -188,33 +160,117 @@ class Main extends PluginBase implements Listener
         ")" => "010010",
     ];
 
-    public function textToMorse(string $text): array
+    private static $caFilePath;
+
+    public static function getCaFilePath(): string
+    {
+        return self::$caFilePath;
+    }
+
+    public function onEnable(): void
+    {
+        self::$caFilePath = $this->getDataFolder() . "cacert.pem";
+        $this->saveDefaultConfig();
+        $this->saveResource("cacert.pem");
+        $this->saveResource("music.zip");
+        ResourcePack::register($this->getDataFolder() . "music.zip");
+        $this->getServer()->getPluginManager()->registerEvents($this, $this);
+        $this->getServer()->getCommandMap()->register($this->getName(), new MorseCommand($this));
+    }
+
+    public function onchat(PlayerChatEvent $event): void
+    {
+        $player = $event->getPlayer();
+        $this->toKatakana($event->getMessage(), function (string $converted) use ($player): void {
+            $this->getScheduler()->scheduleRepeatingTask(new MorseSendTask($this->textToMoles($converted)), 5);
+        }, function () use ($player) {
+            $player->sendMessage("えらー...");
+        });
+    }
+
+    public function toKatakana(string $text, Closure $onComplete, Closure $onError): void
+    {
+        $this->getServer()->getAsyncPool()->submitTask(new GooKatakanaTask(
+            $this->getConfig()->get("goo-app-id"),
+            $text,
+            function ($responseCode, $result) use ($onComplete, $onError): void {
+                if ($responseCode === 200) {
+                    $onComplete(json_decode($result, true)["converted"]);
+                } else {
+                    $onError();
+                }
+            }
+        ));
+    }
+
+    /**
+     * @return int[][]
+     */
+    public function textToMoles(string $text): array
     {
         $morse = [];
-        foreach ($this->mb_str_split($text) as $char) {
+        foreach ($this->mbStrSplit($text) as $char) {
             $morse[] = $this->charToMorse($char);
         }
         return $morse;
     }
 
-    public function charToMorse(string $char): ?string
+    /**
+     * @return int[]|null
+     */
+    public function charToMorse(string $char): ?array
     {
-        return self::CHAR_MORSE_MAP[$char] ?? null;
+        if (!array_key_exists($char, self::CHAR_MORSE_MAP)) {
+            return null;
+        }
+        return array_map(function (string $string): int {
+            return (int)$string;
+        }, str_split(self::CHAR_MORSE_MAP[$char]));
     }
 
-    function mb_str_split($str, $split_len = 1) {
-
-
-        if ($split_len <= 0) {
-            $split_len = 1;
+    /**
+     * @return string[]
+     */
+    public function mbStrSplit(string $string, int $splitLength = 1): array
+    {
+        if ($splitLength <= 0) {
+            $splitLength = 1;
         }
-
-        $strlen = mb_strlen($str);
-        $ret    = array();
-
-        for ($i = 0; $i < $strlen; $i += $split_len) {
-            $ret[ ] = mb_substr($str, $i, $split_len);
+        $length = mb_strlen($string);
+        $return = [];
+        for ($i = 0; $i < $length; $i += $splitLength) {
+            $return[] = mb_substr($string, $i, $splitLength);
         }
-        return $ret;
+        return $return;
+    }
+
+    /**
+     * @param Player[] $players
+     */
+    public static function sendMorse(int $type, array $players = []): void
+    {
+        if ($players === []) {
+            $players = Server::getInstance()->getOnlinePlayers();
+        }
+        switch ($type) {
+            case self::TYPE_SHORT:
+                $soundName = "morsechat.short";
+                break;
+            case self::TYPE_LONG:
+                $soundName = "morsechat.long";
+                break;
+            default:
+                throw new InvalidArgumentException("Invalid type: $type");
+        }
+        foreach ($players as $player) {
+            $packet = new PlaySoundPacket();
+            $packet->soundName = $soundName;
+            $packet->volume = 1.0;
+            $packet->pitch = 1.0;
+            $packet->x = $player->getX();
+            $packet->y = $player->getY();
+            $packet->z = $player->getZ();
+            $player->dataPacket($packet);
+        }
     }
 }

@@ -1,7 +1,11 @@
 name: MorseChat
-version: 0.0.1
+version: 1.0.0
 main: pjz9n\morsechat\Main
-api: 3.0.0
+api: 3.4.0
 authors:
   - pjz9n
   - tatchan0825
+permissions:
+  morsechat.command.morse:
+    description: /morse コマンドの実行を許可します
+    default: true

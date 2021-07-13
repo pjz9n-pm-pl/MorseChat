@@ -45,7 +45,7 @@ class GooKatakanaTask extends AsyncTask
         $this->storeLocal([$onComplete]);
     }
 
-    public function onRun()
+    public function onRun(): void
     {
         $curl = curl_init("https://labs.goo.ne.jp/api/hiragana");
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
